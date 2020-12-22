@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:isolate';
 import 'package:mutex/mutex.dart';
 
-class Requester<Request, Response> {
+class Requester {
   SendPort _responderSendPort;
   bool _dead = false;
 
@@ -14,25 +14,23 @@ class Requester<Request, Response> {
   /// Awaiting this Future, you can Lock the specific IsolateLocker to
   /// exclusively use it. Use just with "await" to wait for the lock to be
   /// accepted
-  Future<Response> request(Request request) async {
+  Future<dynamic> request(dynamic request) async {
     if (_dead) return null;
 
     await _m.acquire();
 
-    ___RequestCapsule<Request> requestCapsule = ___RequestCapsule<Request>();
+    ___RequestCapsule requestCapsule = ___RequestCapsule();
     var newReceivePort = ReceivePort();
     requestCapsule.request = request;
     requestCapsule.responsePort = newReceivePort.sendPort;
 
-    Future<Response> responseListener() async {
-      Response gotResponse;
+    Future<dynamic> responseListener() async {
+      dynamic gotResponse;
 
       await for (dynamic message in newReceivePort) {
-        if (message is Response) {
-          gotResponse = message;
-          newReceivePort.close();
-          break;
-        }
+        gotResponse = message;
+        newReceivePort.close();
+        break;
       }
 
       return gotResponse;
@@ -41,6 +39,8 @@ class Requester<Request, Response> {
     var responseFuture = responseListener();
     _responderSendPort.send(requestCapsule);
     var response = await responseFuture;
+
+    _m.release();
     return response;
   }
 
@@ -72,18 +72,17 @@ class ___KillRequest {
   bool action = true; // true == kill
 }
 
-class ___ResponderConf<Request, Response> {
+class ___ResponderConf {
   SendPort mainSendPort;
-  Response Function(Request) callback;
+  Future<dynamic> Function(dynamic) callback;
 }
 
-class ___RequestCapsule<Request> {
+class ___RequestCapsule {
   SendPort responsePort;
-  Request request;
+  dynamic request;
 }
 
-void _responderIsolateFunc<Request, Response>(
-    ___ResponderConf<Request, Response> conf) {
+void _responderIsolateFunc(___ResponderConf conf) {
   ReceivePort receivePort = ReceivePort();
   int openPortCount = 0;
 
@@ -108,13 +107,9 @@ void _responderIsolateFunc<Request, Response>(
       if (request.action == true) {
         var newReceivePort = ReceivePort();
 
-        newReceivePort.listen((message) {
+        newReceivePort.listen((message) async {
           // Listening from a Requester
-          if (message is ___RequestCapsule<Request>) {
-            ___RequestCapsule<Request> requestCapsule = message;
-            Response response = conf.callback(requestCapsule.request);
-            requestCapsule.responsePort.send(response);
-          } else if (message is ___KillRequest) {
+          if (message is ___KillRequest) {
             ___KillRequest killRequest = message;
 
             if (killRequest.action == true) {
@@ -123,6 +118,10 @@ void _responderIsolateFunc<Request, Response>(
             }
 
             tryKillMe();
+          } else if (message is ___RequestCapsule) {
+            ___RequestCapsule requestCapsule = message;
+            dynamic response = await conf.callback(requestCapsule.request);
+            requestCapsule.responsePort.send(response);
           }
         });
 
@@ -143,7 +142,7 @@ void _responderIsolateFunc<Request, Response>(
   conf.mainSendPort.send(receivePort.sendPort);
 }
 
-class Responder<Request, Response> {
+class Responder {
   SendPort _responderSendPort;
   final _responderReceivePort = ReceivePort();
   final _responderSendPortCompleter = Completer();
@@ -152,7 +151,7 @@ class Responder<Request, Response> {
   Mutex _m = Mutex();
 
   /// Create a new IsolateLocker to lock something globally
-  Responder(Response Function(Request) callback) {
+  Responder(Future<dynamic> Function(dynamic) callback) {
     void _isolateListener() async {
       await for (dynamic message in _responderReceivePort) {
         if (message is SendPort) {
@@ -162,8 +161,7 @@ class Responder<Request, Response> {
             print("Responder set up");
             _responderSendPortCompleter.complete();
           } else {
-            Requester<Request, Response> newRequester =
-                Requester<Request, Response>();
+            Requester newRequester = Requester();
             newRequester._responderSendPort = message;
             _newResponderCompleter.complete(newRequester);
           }
@@ -175,8 +173,7 @@ class Responder<Request, Response> {
     }
 
     _isolateListener();
-    ___ResponderConf<Request, Response> responderConf =
-        ___ResponderConf<Request, Response>();
+    ___ResponderConf responderConf = ___ResponderConf();
     responderConf.callback = callback;
     responderConf.mainSendPort = _responderReceivePort.sendPort;
     Isolate.spawn(_responderIsolateFunc, responderConf);
@@ -184,10 +181,10 @@ class Responder<Request, Response> {
 
   /// Get a new Locker to pass to a new Isolate which then can Lock the
   /// IsolateLocker once it needs a specific resource.
-  Future<Requester<Request, Response>> requestNewRequester() async {
-    if (_dead) return null;
-
+  Future<Requester> requestNewRequester() async {
     await _m.acquire();
+
+    if (_dead) return null;
 
     await _responderSendPortCompleter.future;
 
@@ -205,10 +202,16 @@ class Responder<Request, Response> {
   /// Kill the IsolateLocker. This only gives a Signal to the Isolate Locker.
   /// The Kill will only be executed if all Locks also have been killed.
   /// This will Render this IsolateLocker useless!
-  void kill() {
-    ___KillRequest _killRequest = ___KillRequest();
-    _killRequest.action = true;
-    _responderSendPort.send(_killRequest);
+  void kill() async {
+    await _m.acquire();
+
+    if (_dead) return null;
+
+    await _responderSendPortCompleter.future;
+
+    ___KillRequest killRequest = ___KillRequest();
+    killRequest.action = true;
+    _responderSendPort.send(killRequest);
     _dead = true;
   }
 }

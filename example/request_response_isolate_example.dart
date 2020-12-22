@@ -15,13 +15,12 @@ class MyResponse {
 }
 
 class RequesterConf {
-  Requester<MyRequest, MyResponse> requester;
+  Requester requester;
   int id;
 }
 
 void main() async {
-  Responder<MyRequest, MyResponse> responder =
-      Responder<MyRequest, MyResponse>(responderFunc);
+  Responder responder = Responder(responderFunc);
 
   for (var i = 0; i < requesterAmount; i++) {
     print("C Creating Requester " + i.toString());
@@ -37,10 +36,10 @@ void main() async {
   responder.kill();
 }
 
-MyResponse responderFunc(MyRequest request) {
+Future<dynamic> responderFunc(dynamic request) async {
   MyResponse response = MyResponse();
   response.requestIdString = request.requestId.toString();
-  return response;
+  return response as dynamic;
 }
 
 void requesterIsolateFunc(RequesterConf conf) async {
