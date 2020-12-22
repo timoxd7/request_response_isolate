@@ -1,7 +1,7 @@
 /// Support for doing something awesome.
 ///
 /// More dartdocs go here.
-library isolate_locker;
+library request_response_isolate;
 
 export 'src/request_response_isolate_base.dart';
 

@@ -1,7 +1,7 @@
 name: request_response_isolate
-description: A simple Library to make the handling of isolates easier
+description: A simple Library to make the handling of global data syncing easier
 version: 1.0.0
-#homepage: 
+homepage: https://github.com/timoxd7/request_response_isolate
 
 environment:
   sdk: '>=2.10.0 <3.0.0'
