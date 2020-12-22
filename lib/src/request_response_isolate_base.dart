@@ -5,15 +5,9 @@ import 'package:mutex/mutex.dart';
 class Requester {
   SendPort _responderSendPort;
   bool _dead = false;
-
-  /// Besides the lock between the independent isolates, there also needs to be
-  /// a Lock between async code in the same Isolate. To lock them against each
-  /// other, using a Mutex from the mutex package is the best way.
   Mutex _m = Mutex();
 
-  /// Awaiting this Future, you can Lock the specific IsolateLocker to
-  /// exclusively use it. Use just with "await" to wait for the lock to be
-  /// accepted
+  /// Make a new Request and wait for the Response
   Future<dynamic> request(dynamic request) async {
     if (_dead) return null;
 
@@ -44,9 +38,9 @@ class Requester {
     return response;
   }
 
-  /// Only if the Isolate should be terminated! This will render this Locker
+  /// Only if the Isolate should be terminated! This will render this Requester
   /// permanently useless. Only use if all sync and async code which could
-  /// use this Locker is fully completed!
+  /// use this Requester is fully completed!
   void kill() async {
     await _m.acquire();
 
@@ -63,9 +57,10 @@ class Requester {
   }
 }
 
+// Some Helper Classes
+
 class ___SendPortRequest {
-  bool action =
-      true; // true == get new SendPort, false == kill this ReceivePort
+  bool action = true; // true == get new SendPort
 }
 
 class ___KillRequest {
@@ -82,6 +77,7 @@ class ___RequestCapsule {
   dynamic request;
 }
 
+// Needed internally by the Responder Isolate to handle requests
 void _responderIsolateFunc(___ResponderConf conf) {
   ReceivePort receivePort = ReceivePort();
   int openPortCount = 0;
@@ -150,7 +146,9 @@ class Responder {
   bool _dead = false;
   Mutex _m = Mutex();
 
-  /// Create a new IsolateLocker to lock something globally
+  /// Create a new Responder to request some globally needed Data from an
+  /// Isolate. Using a Request-Response-Syntax, you can get globally sync
+  /// Data within any Isolate.
   Responder(Future<dynamic> Function(dynamic) callback) {
     void _isolateListener() async {
       await for (dynamic message in _responderReceivePort) {
@@ -179,8 +177,8 @@ class Responder {
     Isolate.spawn(_responderIsolateFunc, responderConf);
   }
 
-  /// Get a new Locker to pass to a new Isolate which then can Lock the
-  /// IsolateLocker once it needs a specific resource.
+  /// Get a new Requester to pass to a new Isolate which then can make Requests
+  /// to get globally synced data.
   Future<Requester> requestNewRequester() async {
     await _m.acquire();
 
@@ -199,9 +197,9 @@ class Responder {
     return newRequester;
   }
 
-  /// Kill the IsolateLocker. This only gives a Signal to the Isolate Locker.
-  /// The Kill will only be executed if all Locks also have been killed.
-  /// This will Render this IsolateLocker useless!
+  /// Kill the Responder. This only gives a Signal to the Responder Isolate.
+  /// The Kill will only be executed if all Requesters also have been killed.
+  /// This will Render this Responder useless!
   void kill() async {
     await _m.acquire();
 

@@ -1,46 +1,48 @@
-# Isolate Locker
+# Request Response Isolate
 
-This is a mutex-kind locker for isolate-wide locking. You can create an IsolateLocker (mutex) which then
-can Create Locks, which are given to each isolate that should be able to lock the resource.
+This is a simple library to simplify the use with Isolates.
 
-For me, it is mainly used that only one Isolate can write to a Database at a time. Still, every
-isolate has its own Database, but only one can write to it by requesting a lock.
+It just needs a handler function, which then handles some task in a dedicated isolate.
 
-If you want to terminate an Isolate using a Lock or even the main isolate itself, see the
-attached example.
+It es meant to be used for multiple isolates, each sending requests to a unique Isolates managing global data.
+
+For Example, you can write a Handler, which responds with User IDs which are globally used and so can not be handled by an isolate itself.
 
 ## Usage
 
-In your main thread, create an IsolateLocker
+See the Example.
 
-    var isolateLocker = IsolateLocker();
+In your main thread, create an Responder which takes a handler which will handle all Requests in its own Isolate. The Handler Function needs to return a Future<dynamic> and should be async. The Requests will be given as parameter and also of type dynamic. Casting is important to be done in the handler!
 
-Then, request a Locker for a new Isolate
+    var responder = Responder(handlerFunc);
 
-    var newLocker = await isolateLocker.requestNewLocker();
+    // ...
 
-Pass this new Locker to a new Isolate (over the SendPort or as init value or part of the init value)
-After this, the Isolate can access the Locker as followed:
+    Future<dynamic> handlerFunc(dynamic request) async {
+        // ...
 
-    await locker.request();
-    // This code will only be executed after the Lock was exclusively given to this Locker
-    locker.release(); // -> Needed to allow another Locker to request a new lock
+        return response;
+    }
 
-For more save code, you can use this function caller. With this, you can't forget to release the lock,
-as it is released automatically!
+Then, request a Requester for a new Isolate
 
-    await locker.protect(() {
-      // Your code...
-    });
+    var newRequester = await responder.requestNewRequester();
+
+Pass this new Requester to a new Isolate (over the SendPort or as init value or part of the init value)
+After this, the Isolate can make Requests as followed (Request and Response as String):
+
+    YourResponseType response = await requester.request(YourRequestType request);
+
+The Request and Response type can be any class you wish.
 
 ## Program Termination
 
-If you want to terminate the Program, all isolates having a Locker need to kill this locker with
+If you want to terminate the Program, all isolates having a Requester need to kill this Requester with
 
-    locker.kill();
+    requester.kill();
 
-And in the main isolate, where the IsolateLocker were created, it also needs to be killed
+And in the main isolate, where the Responder were created, it also needs to be killed
 
-    isolateLocker.kill();
+    responder.kill();
 
-Only if all Isolates killed its Locker, the IsolateLocker will kill itself and its attached Isolate.
+Only if all Isolates killed its Requester, the Responder will kill itself and its attached Isolate.

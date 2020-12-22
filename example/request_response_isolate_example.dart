@@ -1,7 +1,7 @@
 import 'package:request_response_isolate/request_response_isolate.dart';
 import 'dart:isolate';
 
-const int requesterAmount = 1;
+const int requesterAmount = 100;
 const int waitTime = 0;
 
 class MyRequest {
@@ -20,6 +20,7 @@ class RequesterConf {
 }
 
 void main() async {
+  // Create a Responder. The given function is the handler for all requests
   Responder responder = Responder(responderFunc);
 
   for (var i = 0; i < requesterAmount; i++) {
